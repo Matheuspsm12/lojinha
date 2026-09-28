@@ -1,0 +1,1272 @@
+diff --git a/.env.example b/.env.example
+index e8ae8b2..75fb8c3 100644
+--- a/.env.example
++++ b/.env.example
+@@ -11,6 +11,16 @@ ADMIN_SENHA=TroqueEstaSenha123
+ API_URL_PUBLICA=https://api.seudominio.com.br
+ LOJA_URL_PUBLICA=https://seudominio.com.br
+ 
++# Fotos em serviço compatível com S3 (Cloudflare R2, Amazon S3, MinIO).
++# Deixe ARMAZENAMENTO_PROVEDOR=local para guardar no disco do servidor.
++ARMAZENAMENTO_PROVEDOR=local
++S3_BUCKET=
++S3_ENDPOINT=
++S3_REGIAO=auto
++S3_CHAVE_ACESSO=
++S3_CHAVE_SECRETA=
++S3_URL_PUBLICA=
++
+ # Integrações. O Access Token também pode ser conectado pelo painel;
+ # informado aqui, tem prioridade e nem chega ao banco.
+ MELHORENVIO_TOKEN=
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index fd36c59..9dbf0a3 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,67 @@
+ # Histórico de versões
+ 
++## 0.9.3 — Giro da foto da categoria (aguardando aprovação)
++
++### Adicionado
++- Na página inicial, passar o mouse sobre uma categoria gira a foto uma volta completa, em movimento suave; ao tirar o mouse, ela desfaz o giro e volta à posição inicial.
++- Gira apenas a imagem dentro do círculo: a borda dourada, o nome e o restante do card não giram.
++- O giro também acontece ao chegar na categoria pelo teclado.
++- No celular não há giro, para não atrapalhar o toque, e quem usa "reduzir movimento" no sistema não vê animação nenhuma.
++- Feito só com CSS, sem script: o clique continua abrindo a página da categoria normalmente.
++
++### Mantido
++- Medalhões da página de categorias, layout, imagens, categorias e integrações sem alteração.
++
++## 0.9.2 — Categorias ligadas ao cadastro de produtos (aguardando aprovação)
++
++### Adicionado
++- `GET /api/admin/categorias/opcoes`: lista pronta para o campo de categoria do produto, com categorias e subcategorias ativas, na ordem, com o caminho montado e a contagem de produtos.
++- O campo de categoria do formulário passou a ser montado dessa lista: categoria ou subcategoria criada ou renomeada aparece na hora, sem fechar o painel, agrupada por categoria principal.
++- Ativar e desativar categorias e subcategorias pelo painel, com aviso de quantos produtos ficam fora da loja.
++- Excluir categoria pelo painel, com a mesma regra da API: recusa quando há produtos ou subcategorias.
++- Menu, medalhões, filtros, busca e páginas da loja passaram a respeitar as categorias ativas.
++
++### Corrigido
++- Produto criado pelo formulário do protótipo ficava sem identificador, o que impedia abrir a edição dele em seguida.
++
++### Regras
++- Categoria desativada não pode ser escolhida em produto novo nem em troca de categoria, mas continua vinculada ao produto que já estava nela — ao editar, aparece marcada como desativada.
++
++### Mantido
++- Visual, produtos, categorias existentes, pedidos, pagamentos, fotos, frete, integrações e banco de dados sem alteração. Nenhuma migração foi necessária.
++
++## 0.9.1 — Gestão das fotos do produto (aguardando aprovação)
++
++### Adicionado
++- Galeria no formulário do produto mostrando todas as fotos cadastradas, com a capa destacada.
++- Botão de excluir em cada foto, com confirmação antes de apagar; a confirmação avisa quando a foto é a capa.
++- Substituição de uma foto por outra, mantendo a posição dela na galeria.
++- Escolha manual da capa; excluindo a capa, a próxima foto assume automaticamente.
++- Produto sem nenhuma foto passa a mostrar a imagem padrão da loja na vitrine, no card e na página do produto.
++- Exclusão e substituição apagam do armazenamento todas as versões geradas e o arquivo original, sem deixar arquivo abandonado.
++- Armazenamento compatível com **S3** (Cloudflare R2, Amazon S3, MinIO, Backblaze), ligado por `Armazenamento:Provedor = s3`, com as mesmas operações do disco local, inclusive a exclusão.
++- Registro de quem excluiu ou substituiu cada foto, com e-mail, data e IP, em `registros_acesso` e no log.
++- Excluir, substituir, reordenar e escolher a capa passaram a exigir a conta administradora.
++- 9 testes novos (91 no total): exclusão que não afeta produto nem outras fotos, capa promovida, substituição mantendo a posição, arquivos apagados do armazenamento, permissões e registro da auditoria.
++
++### Mantido
++- Visual, produtos, categorias, pedidos, pagamentos, frete, integrações e banco de dados sem alteração. Nenhuma migração foi necessária.
++
++## 0.9.0 — Nova vitrine da página inicial (aguardando aprovação)
++
++### Alterado
++- A faixa de abertura da loja passou a trazer a arte da **Lojinha do Vale — Artigos Doutrinários O.S.O.E.C.**, no lugar do amanhecer desenhado.
++- A arte entra inteira, na proporção original (8,19 : 1), sem corte e sem distorção, sobre um fundo escuro que combina com o preto e o dourado do material.
++- Título, texto e botão continuam com as mesmas palavras, agora centralizados abaixo da arte, em branco sobre o fundo escuro, com o botão em dourado para manter o contraste.
++
++### Adicionado
++- Arte otimizada em 640, 960, 1280, 1440 e 1920 px, em WebP e JPG, mais o arquivo original.
++- Tela **Aparência** no painel, onde o administrador troca o banner ou volta ao que veio na instalação.
++- `GET /api/loja/aparencia`, `GET/POST/DELETE /api/admin/aparencia/banner` — o envio aceita os mesmos formatos das fotos, corrige a orientação e gera as versões otimizadas mantendo a proporção. Só a conta administradora pode trocar.
++
++### Mantido
++- Produtos, categorias, fotos, carrinho, checkout, cadastro, área do cliente, pedidos, pagamentos, painel, segurança, frete, integrações e banco de dados sem nenhuma alteração. Nenhuma migração foi necessária: o banner usa a tabela `configuracoes` que já existia.
++
+ ## 0.8.1 — Marca da Lojinha do Amanhecer
+ 
+ ### Alterado
+diff --git a/backend/src/LojaAmanhecer.Api/Controllers/Admin/CategoriasAdminController.cs b/backend/src/LojaAmanhecer.Api/Controllers/Admin/CategoriasAdminController.cs
+index e5d8402..1686f37 100644
+--- a/backend/src/LojaAmanhecer.Api/Controllers/Admin/CategoriasAdminController.cs
++++ b/backend/src/LojaAmanhecer.Api/Controllers/Admin/CategoriasAdminController.cs
+@@ -24,6 +24,36 @@ public class CategoriasAdminController(LojaDbContext db, IProcessadorImagens ima
+         return todas.Where(c => c.CategoriaPaiId is null).Select(c => c.ParaDto()).ToList();
+     }
+ 
++    /// <summary>
++    /// Lista pronta para o campo de categoria do cadastro de produtos: categorias e subcategorias
++    /// ativas, já na ordem e com o caminho montado ("Coletes › Colete de Apará").
++    /// Ao editar um produto, passe o id da categoria atual em <c>incluirId</c>: ela entra na lista
++    /// mesmo desativada, para o produto não perder o vínculo.
++    /// </summary>
++    [HttpGet("opcoes")]
++    public async Task<List<CategoriaOpcaoDto>> Opcoes([FromQuery] Guid? incluirId)
++    {
++        var todas = await db.Categorias.AsNoTracking().OrderBy(c => c.Ordem).ThenBy(c => c.Nome).ToListAsync();
++        var produtos = await db.Produtos.AsNoTracking()
++            .GroupBy(p => p.CategoriaId).Select(g => new { g.Key, Qtd = g.Count() })
++            .ToDictionaryAsync(x => x.Key, x => x.Qtd);
++
++        var opcoes = new List<CategoriaOpcaoDto>();
++        foreach (var pai in todas.Where(c => c.CategoriaPaiId is null))
++        {
++            var subs = todas.Where(s => s.CategoriaPaiId == pai.Id).ToList();
++            if (Mostrar(pai)) opcoes.Add(Montar(pai, null));
++            foreach (var sub in subs.Where(Mostrar)) opcoes.Add(Montar(sub, pai));
++        }
++        return opcoes;
++
++        bool Mostrar(Categoria c) => c.Ativa || c.Id == incluirId;
++        CategoriaOpcaoDto Montar(Categoria c, Categoria? pai) => new(
++            c.Id, c.Nome, pai?.Nome,
++            pai is null ? c.Nome : $"{pai.Nome} › {c.Nome}",
++            c.Ativa, pai is not null, produtos.GetValueOrDefault(c.Id));
++    }
++
+     [HttpPost]
+     public async Task<ActionResult<CategoriaDto>> Criar(SalvarCategoriaDto dto)
+     {
+diff --git a/backend/src/LojaAmanhecer.Api/Controllers/Admin/ProdutosAdminController.cs b/backend/src/LojaAmanhecer.Api/Controllers/Admin/ProdutosAdminController.cs
+index aa7e09e..f3ba3c3 100644
+--- a/backend/src/LojaAmanhecer.Api/Controllers/Admin/ProdutosAdminController.cs
++++ b/backend/src/LojaAmanhecer.Api/Controllers/Admin/ProdutosAdminController.cs
+@@ -15,7 +15,10 @@ namespace LojaAmanhecer.Api.Controllers.Admin;
+ [ApiController]
+ [Route("api/admin/produtos")]
+ [Authorize(Policy = Politicas.Equipe)]
+-public class ProdutosAdminController(LojaDbContext db, IArmazenamentoArquivos arquivos, IProcessadorImagens imagens, IConfiguration configuracao) : ControllerBase
++public class ProdutosAdminController(
++    LojaDbContext db, IArmazenamentoArquivos arquivos, IProcessadorImagens imagens,
++    IConfiguration configuracao, LojaAmanhecer.Api.Seguranca.ServicoAcesso acessos,
++    ILogger<ProdutosAdminController> log) : ControllerBase
+ {
+     [HttpGet]
+     public async Task<PaginaDto<ProdutoResumoDto>> Listar([FromQuery] string? busca, [FromQuery] Guid? categoriaId,
+@@ -117,25 +120,120 @@ public class ProdutosAdminController(LojaDbContext db, IArmazenamentoArquivos ar
+ 
+     /// <summary>Define a ordem das fotos; a primeira é a foto principal.</summary>
+     [HttpPut("{id:guid}/imagens/ordem")]
++    [Authorize(Policy = Politicas.Administrador)]
+     public async Task<IActionResult> OrdenarImagens(Guid id, List<Guid> idsNaOrdem)
+     {
+         var imgs = await db.ProdutoImagens.Where(i => i.ProdutoId == id).ToListAsync();
++        if (imgs.Count == 0) return NotFound();
+         foreach (var img in imgs) img.Ordem = idsNaOrdem.IndexOf(img.Id) is var i and >= 0 ? i : 999;
++        Renumerar(imgs.OrderBy(i => i.Ordem).ToList());
+         await db.SaveChangesAsync();
+         return NoContent();
+     }
+ 
++    /// <summary>Escolhe qual foto é a capa do produto; as outras continuam na mesma sequência.</summary>
++    [HttpPatch("{id:guid}/imagens/{imagemId:guid}/principal")]
++    [Authorize(Policy = Politicas.Administrador)]
++    public async Task<ActionResult<List<ProdutoImagemDto>>> DefinirPrincipal(Guid id, Guid imagemId)
++    {
++        var imgs = await db.ProdutoImagens.Where(i => i.ProdutoId == id).OrderBy(i => i.Ordem).ToListAsync();
++        var escolhida = imgs.FirstOrDefault(i => i.Id == imagemId);
++        if (escolhida is null) return NotFound();
++
++        imgs.Remove(escolhida);
++        imgs.Insert(0, escolhida);
++        Renumerar(imgs);
++        await db.SaveChangesAsync();
++
++        log.LogInformation("Foto {Foto} virou a capa do produto {Produto} (por {Usuario})", imagemId, id, User.EmailUsuario());
++        return imgs.Select(i => i.ParaDto()).ToList();
++    }
++
++    /// <summary>
++    /// Troca o arquivo de uma foto já cadastrada, mantendo a posição dela na galeria.
++    /// As versões antigas saem do armazenamento (disco local ou S3).
++    /// </summary>
++    [HttpPost("{id:guid}/imagens/{imagemId:guid}/substituir")]
++    [Authorize(Policy = Politicas.Administrador)]
++    [RequestSizeLimit(long.MaxValue)]
++    [RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)]
++    public async Task<ActionResult<List<ProdutoImagemDto>>> SubstituirImagem(Guid id, Guid imagemId, IFormFile foto, CancellationToken ct)
++    {
++        var produto = await db.Produtos.FirstOrDefaultAsync(p => p.Id == id, ct);
++        if (produto is null) return NotFound();
++        var img = await db.ProdutoImagens.FirstOrDefaultAsync(i => i.Id == imagemId && i.ProdutoId == id, ct);
++        if (img is null) return NotFound();
++        if (foto is null || foto.Length == 0) throw new RegraNegocioException("Selecione a foto que vai substituir a atual.");
++
++        var limiteMb = configuracao.GetValue("Imagens:TamanhoMaximoMb", 60);
++        if (foto.Length > limiteMb * 1024L * 1024L)
++            throw new RegraNegocioException($"A foto {foto.FileName} tem {foto.Length / 1048576.0:F0} MB e passa do limite de {limiteMb} MB.");
++        if (!imagens.Aceita(foto.FileName, foto.ContentType))
++            throw new RegraNegocioException($"O arquivo {foto.FileName} não é uma imagem aceita. Use JPG, PNG, WEBP, AVIF ou HEIC.");
++
++        var antigas = ArquivosDe(img);
++
++        await using var conteudo = foto.OpenReadStream();
++        var r = await imagens.ProcessarAsync(conteudo, foto.FileName, ct);
++        img.Url = r.UrlCatalogo; img.UrlMiniatura = r.UrlMiniatura; img.UrlGrande = r.UrlGrande;
++        img.UrlOriginal = r.UrlOriginal; img.Largura = r.Largura; img.Altura = r.Altura;
++        img.TextoAlternativo ??= produto.Nome;
++        await db.SaveChangesAsync(ct);
++
++        await ApagarArquivosAsync(antigas, ct);
++        await acessos.RegistrarAsync(User.EmailUsuario(), true, "FotoSubstituida", "painel", User.UsuarioId());
++        log.LogInformation("Foto {Foto} do produto {Produto} substituída por {Usuario}", imagemId, id, User.EmailUsuario());
++
++        return (await db.ProdutoImagens.Where(i => i.ProdutoId == id).OrderBy(i => i.Ordem).ToListAsync(ct))
++            .Select(i => i.ParaDto()).ToList();
++    }
++
++    /// <summary>
++    /// Exclui uma foto do produto. Só sai essa foto: o produto e as outras imagens continuam como estavam.
++    /// Se a excluída era a capa, a próxima da fila assume. Os arquivos gerados também são apagados
++    /// do armazenamento (disco local ou S3), para não deixar arquivo abandonado.
++    /// </summary>
+     [HttpDelete("{id:guid}/imagens/{imagemId:guid}")]
+-    public async Task<IActionResult> RemoverImagem(Guid id, Guid imagemId)
++    [Authorize(Policy = Politicas.Administrador)]
++    public async Task<ActionResult<List<ProdutoImagemDto>>> RemoverImagem(Guid id, Guid imagemId, CancellationToken ct)
+     {
+-        var img = await db.ProdutoImagens.FirstOrDefaultAsync(i => i.Id == imagemId && i.ProdutoId == id);
++        var imgs = await db.ProdutoImagens.Where(i => i.ProdutoId == id).OrderBy(i => i.Ordem).ToListAsync(ct);
++        var img = imgs.FirstOrDefault(i => i.Id == imagemId);
+         if (img is null) return NotFound();
++
++        var eraCapa = imgs[0].Id == img.Id;
++        var arquivosAntigos = ArquivosDe(img);
++
+         db.ProdutoImagens.Remove(img);
+-        await db.SaveChangesAsync();
+-        // Apaga todas as versões geradas, inclusive o original
+-        foreach (var url in new[] { img.Url, img.UrlMiniatura, img.UrlGrande, img.UrlOriginal }.Where(u => !string.IsNullOrWhiteSpace(u)))
+-            await arquivos.RemoverAsync(url!);
+-        return NoContent();
++        imgs.Remove(img);
++        Renumerar(imgs);                      // a próxima foto vira a capa automaticamente
++        await db.SaveChangesAsync(ct);
++
++        await ApagarArquivosAsync(arquivosAntigos, ct);
++        await acessos.RegistrarAsync(User.EmailUsuario(), true, "FotoRemovida", "painel", User.UsuarioId());
++        log.LogInformation("Foto {Foto} do produto {Produto} excluída por {Usuario}{Capa}",
++            imagemId, id, User.EmailUsuario(), eraCapa ? " (era a capa)" : "");
++
++        return imgs.Select(i => i.ParaDto()).ToList();
++    }
++
++    // ---------- apoio das fotos ----------
++
++    private static string?[] ArquivosDe(ProdutoImagem img) => [img.Url, img.UrlMiniatura, img.UrlGrande, img.UrlOriginal];
++
++    /// <summary>Numera as fotos de 0 em diante, na ordem em que estão na lista.</summary>
++    private static void Renumerar(List<ProdutoImagem> imagens)
++    {
++        for (var i = 0; i < imagens.Count; i++) imagens[i].Ordem = i;
++    }
++
++    private async Task ApagarArquivosAsync(IEnumerable<string?> urls, CancellationToken ct)
++    {
++        foreach (var url in urls.Where(u => !string.IsNullOrWhiteSpace(u)))
++        {
++            try { await arquivos.RemoverAsync(url!, ct); }
++            catch (Exception ex) { log.LogWarning(ex, "Não foi possível apagar o arquivo {Url}", url); }
++        }
+     }
+ 
+     /// <summary>Exporta o catálogo para Excel.</summary>
+@@ -200,8 +298,13 @@ public class ProdutosAdminController(LojaDbContext db, IArmazenamentoArquivos ar
+ 
+     private async Task AplicarAsync(Produto p, SalvarProdutoDto dto)
+     {
+-        if (!await db.Categorias.AnyAsync(c => c.Id == dto.CategoriaId))
+-            throw new RegraNegocioException("Categoria não encontrada.");
++        var categoria = await db.Categorias.AsNoTracking().FirstOrDefaultAsync(c => c.Id == dto.CategoriaId)
++            ?? throw new RegraNegocioException("Categoria não encontrada.");
++
++        // Categoria desativada só continua valendo para o produto que já estava nela:
++        // assim um produto antigo não perde o vínculo, mas ninguém escolhe uma categoria fora do ar.
++        if (!categoria.Ativa && p.CategoriaId != dto.CategoriaId)
++            throw new RegraNegocioException($"A categoria \"{categoria.Nome}\" está desativada. Ative-a ou escolha outra.");
+ 
+         p.Nome = dto.Nome.Trim(); p.Descricao = dto.Descricao; p.CategoriaId = dto.CategoriaId;
+         p.Preco = dto.Preco; p.Estoque = dto.Estoque;
+diff --git a/backend/src/LojaAmanhecer.Api/Controllers/CheckoutController.cs b/backend/src/LojaAmanhecer.Api/Controllers/CheckoutController.cs
+index 3c1e60f..437f8ab 100644
+--- a/backend/src/LojaAmanhecer.Api/Controllers/CheckoutController.cs
++++ b/backend/src/LojaAmanhecer.Api/Controllers/CheckoutController.cs
+@@ -14,7 +14,6 @@ namespace LojaAmanhecer.Api.Controllers;
+ [ApiController]
+ [Route("api")]
+ public class CheckoutController(LojaDbContext db, ServicoCheckout checkout, IServicoCep cep,
+-    LojaAmanhecer.Api.Servicos.ConfiguracaoPagamento configuracaoPagamento,
+     LojaAmanhecer.Api.Seguranca.ServicoAcesso acessos) : ControllerBase
+ {
+     /// <summary>Endereço a partir do CEP (ViaCEP).</summary>
+diff --git a/backend/src/LojaAmanhecer.Api/Infra/Infra.cs b/backend/src/LojaAmanhecer.Api/Infra/Infra.cs
+index e052e63..641caf4 100644
+--- a/backend/src/LojaAmanhecer.Api/Infra/Infra.cs
++++ b/backend/src/LojaAmanhecer.Api/Infra/Infra.cs
+@@ -67,4 +67,8 @@ public static class ClaimsExtensoes
+ {
+     public static Guid UsuarioId(this ClaimsPrincipal u) =>
+         Guid.Parse(u.FindFirstValue(ClaimTypes.NameIdentifier)!);
++
++    /// <summary>E-mail de quem está logado, usado nos registros de auditoria.</summary>
++    public static string EmailUsuario(this ClaimsPrincipal u) =>
++        u.FindFirstValue(ClaimTypes.Email) ?? u.FindFirstValue(JwtRegisteredClaimNames.Email) ?? "";
+ }
+diff --git a/backend/src/LojaAmanhecer.Api/appsettings.json b/backend/src/LojaAmanhecer.Api/appsettings.json
+index 5ab43eb..7fc04eb 100644
+--- a/backend/src/LojaAmanhecer.Api/appsettings.json
++++ b/backend/src/LojaAmanhecer.Api/appsettings.json
+@@ -13,7 +13,11 @@
+   "AdminInicial": { "Nome": "", "Email": "", "Senha": "" },
+   "Painel": { "PerfisPermitidos": [ "Administrador" ] },
+   "Seguranca": { "TentativasAteBloquear": 5, "MinutosDeBloqueio": 15 },
+-  "Armazenamento": { "PastaLocal": "uploads" },
++  "Armazenamento": {
++    "Provedor": "local",
++    "PastaLocal": "uploads",
++    "S3": { "Bucket": "", "Endpoint": "", "Regiao": "auto", "ChaveAcesso": "", "ChaveSecreta": "", "UrlPublica": "", "Prefixo": "uploads", "ForcarCaminho": true }
++  },
+   "Imagens": { "TamanhoMaximoMb": 60, "Formato": "webp", "Qualidade": 82, "Miniatura": 400, "Catalogo": 900, "Produto": 1600, "CategoriaMedalhao": 600, "CategoriaMiniatura": 200 },
+   "Cors": { "Origens": [ "http://localhost:3000" ] },
+   "Swagger": { "Habilitado": false },
+diff --git a/backend/src/LojaAmanhecer.Application/Dtos/CatalogoDtos.cs b/backend/src/LojaAmanhecer.Application/Dtos/CatalogoDtos.cs
+index 543a2e6..c1103ca 100644
+--- a/backend/src/LojaAmanhecer.Application/Dtos/CatalogoDtos.cs
++++ b/backend/src/LojaAmanhecer.Application/Dtos/CatalogoDtos.cs
+@@ -6,6 +6,9 @@ public record CategoriaDto(Guid Id, string Nome, string Slug, string? Descricao,
+     Guid? CategoriaPaiId, List<CategoriaDto> Subcategorias,
+     string? ImagemMiniaturaUrl = null, string? ImagemOriginalUrl = null, bool TemFoto = false);
+ 
++/// <summary>Uma linha da lista de categorias do formulário de produto.</summary>
++public record CategoriaOpcaoDto(Guid Id, string Nome, string? CategoriaPai, string Caminho, bool Ativa, bool EhSubcategoria, int Produtos);
++
+ public record SalvarCategoriaDto(string Nome, string? Descricao, string? ImagemUrl, int Ordem, bool Ativa, Guid? CategoriaPaiId);
+ 
+ public record ProdutoResumoDto(Guid Id, string Nome, string Slug, string Categoria, decimal Preco, string? ImagemUrl,
+diff --git a/backend/src/LojaAmanhecer.Infrastructure/InjecaoDependencia.cs b/backend/src/LojaAmanhecer.Infrastructure/InjecaoDependencia.cs
+index 2b0d78e..3d1ff13 100644
+--- a/backend/src/LojaAmanhecer.Infrastructure/InjecaoDependencia.cs
++++ b/backend/src/LojaAmanhecer.Infrastructure/InjecaoDependencia.cs
+@@ -36,7 +36,12 @@ public static class InjecaoDependencia
+             .AddDefaultTokenProviders();
+ 
+         services.AddScoped<SemeadorInicial>();
+-        services.AddScoped<IArmazenamentoArquivos, ArmazenamentoLocal>();
++        // Onde ficam as fotos: disco local em desenvolvimento, S3/R2 em produção.
++        // Os dois implementam o mesmo contrato, inclusive a exclusão dos arquivos.
++        if ((config["Armazenamento:Provedor"] ?? "local").Equals("s3", StringComparison.OrdinalIgnoreCase))
++            services.AddSingleton<IArmazenamentoArquivos, ArmazenamentoS3>();
++        else
++            services.AddScoped<IArmazenamentoArquivos, ArmazenamentoLocal>();
+         services.AddScoped<IProcessadorImagens, LojaAmanhecer.Infrastructure.Imagens.ProcessadorImagens>();
+ 
+         // ViaCEP não precisa de chave
+diff --git a/backend/src/LojaAmanhecer.Infrastructure/LojaAmanhecer.Infrastructure.csproj b/backend/src/LojaAmanhecer.Infrastructure/LojaAmanhecer.Infrastructure.csproj
+index 4c1191f..efe26ec 100644
+--- a/backend/src/LojaAmanhecer.Infrastructure/LojaAmanhecer.Infrastructure.csproj
++++ b/backend/src/LojaAmanhecer.Infrastructure/LojaAmanhecer.Infrastructure.csproj
+@@ -5,6 +5,7 @@
+   </ItemGroup>
+ 
+   <ItemGroup>
++    <PackageReference Include="AWSSDK.S3" Version="3.7.416.7" />
+     <PackageReference Include="EFCore.NamingConventions" Version="8.0.3" />
+     <PackageReference Include="Magick.NET-Q8-AnyCPU" Version="14.17.1" />
+     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.11" />
+diff --git a/backend/tests/LojaAmanhecer.Tests/IsolamentoClientesTests.cs b/backend/tests/LojaAmanhecer.Tests/IsolamentoClientesTests.cs
+index 33d628f..0bd40fb 100644
+--- a/backend/tests/LojaAmanhecer.Tests/IsolamentoClientesTests.cs
++++ b/backend/tests/LojaAmanhecer.Tests/IsolamentoClientesTests.cs
+@@ -23,6 +23,9 @@ public class ApiDeTeste : WebApplicationFactory<Program>
+         ? c.Replace("{banco}", _banco)
+         : $"{Servidor};Database={_banco}";
+ 
++    /// <summary>Pasta onde a API de teste grava as fotos; usada para conferir a exclusão dos arquivos.</summary>
++    public string PastaUploads { get; } = Directory.CreateTempSubdirectory("uploads-testes").FullName;
++
+     public const string AdminEmail = "admin.testes@loja.local";
+     public const string AdminSenha = "Admin@Testes123";
+ 
+@@ -39,7 +42,7 @@ public class ApiDeTeste : WebApplicationFactory<Program>
+             ["AdminInicial:Nome"] = "Administrador dos testes",
+             ["AdminInicial:Email"] = AdminEmail,
+             ["AdminInicial:Senha"] = AdminSenha,
+-            ["Armazenamento:PastaLocal"] = Directory.CreateTempSubdirectory("uploads-testes").FullName,
++            ["Armazenamento:PastaLocal"] = PastaUploads,
+             ["Banco:AplicarMigracoesAoIniciar"] = "true"
+         }));
+         return base.CreateHost(builder);
+diff --git a/backend/tests/LojaAmanhecer.Tests/ProcessadorImagensTests.cs b/backend/tests/LojaAmanhecer.Tests/ProcessadorImagensTests.cs
+index ae70326..34249be 100644
+--- a/backend/tests/LojaAmanhecer.Tests/ProcessadorImagensTests.cs
++++ b/backend/tests/LojaAmanhecer.Tests/ProcessadorImagensTests.cs
+@@ -239,3 +239,14 @@ public class CategoriaComFotoTests
+         Assert.True(c.TemFoto);
+     }
+ }
++
++public class ArmazenamentoS3Tests
++{
++    [Theory]
++    [InlineData("/uploads/abc123-cat.webp", "abc123-cat.webp")]
++    [InlineData("https://cdn.lojinha.com.br/abc123-original.heic", "abc123-original.heic")]
++    [InlineData("https://bucket.r2.cloudflarestorage.com/uploads/abc123-mini.webp?v=2", "abc123-mini.webp")]
++    [InlineData("abc123-grande.webp", "abc123-grande.webp")]
++    public void Descobre_o_arquivo_a_apagar_a_partir_da_url(string url, string esperado) =>
++        Assert.Equal(esperado, LojaAmanhecer.Infrastructure.Armazenamento.ArmazenamentoS3.ChaveDe(url));
++}
+diff --git a/docker-compose.yml b/docker-compose.yml
+index a1d0d5a..5aea08b 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -29,6 +29,13 @@ services:
+       AdminInicial__Email: ${ADMIN_EMAIL}
+       AdminInicial__Senha: ${ADMIN_SENHA}
+       Armazenamento__PastaLocal: /app/uploads
++      Armazenamento__Provedor: ${ARMAZENAMENTO_PROVEDOR}
++      Armazenamento__S3__Bucket: ${S3_BUCKET}
++      Armazenamento__S3__Endpoint: ${S3_ENDPOINT}
++      Armazenamento__S3__Regiao: ${S3_REGIAO}
++      Armazenamento__S3__ChaveAcesso: ${S3_CHAVE_ACESSO}
++      Armazenamento__S3__ChaveSecreta: ${S3_CHAVE_SECRETA}
++      Armazenamento__S3__UrlPublica: ${S3_URL_PUBLICA}
+       Cors__Origens__0: ${LOJA_URL_PUBLICA}
+       MelhorEnvio__Token: ${MELHORENVIO_TOKEN}
+       MercadoPago__AccessToken: ${MERCADOPAGO_ACCESS_TOKEN}
+diff --git a/docs/API.md b/docs/API.md
+index 3c7d01a..240966a 100644
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -16,6 +16,15 @@ Autenticação: `Authorization: Bearer <token>` obtido em `/api/auth/login`.
+ 
+ Na listagem `/api/produtos`, cada produto traz `imagemUrl` (a foto principal, como antes) e `fotos`: todas as fotos na ordem do cadastro, usadas para navegar entre elas no card da loja.
+ 
++## Aparência da loja
++
++| Método | Rota | Descrição |
++|---|---|---|
++| GET | `/api/loja/aparencia` | Público. Banner da página inicial (versões para computador e celular); vazio significa usar a arte que veio na instalação |
++| GET | `/api/admin/aparencia` | Somente administrador. Situação da arte em uso |
++| POST | `/api/admin/aparencia/banner` | Envia a arte (`multipart/form-data`, campo `arte`). Aceita os mesmos formatos das fotos, corrige a orientação e gera as versões otimizadas mantendo a proporção |
++| DELETE | `/api/admin/aparencia/banner` | Remove a arte enviada; a loja volta ao banner da instalação |
++
+ ## Pagamentos e recebimentos (somente administrador)
+ 
+ | Método | Rota | Descrição |
+@@ -74,6 +83,7 @@ Detalhes e respostas de recusa em [SEGURANCA.md](SEGURANCA.md).
+ |---|---|---|
+ | GET | `/api/admin/painel/resumo` | Pedidos novos, aguardando pagamento, em produção, enviados, vendas do mês, estoque baixo |
+ | GET | `/api/admin/categorias` | Todas as categorias, inclusive inativas |
++| GET | `/api/admin/categorias/opcoes` | Lista pronta para o campo de categoria do produto: ativas, na ordem, com o caminho ("Coletes › Colete de Apará") e a contagem de produtos. `incluirId` acrescenta a categoria atual do produto mesmo desativada |
+ | POST | `/api/admin/categorias` | Cria categoria ou subcategoria (`categoriaPaiId`) |
+ | PUT | `/api/admin/categorias/{id}` | Atualiza |
+ | DELETE | `/api/admin/categorias/{id}` | Exclui (só sem produtos e sem subcategorias) |
+@@ -86,7 +96,9 @@ Detalhes e respostas de recusa em [SEGURANCA.md](SEGURANCA.md).
+ | PATCH | `/api/admin/produtos/{id}/ativo?ativo=false` | Ativa/inativa |
+ | POST | `/api/admin/produtos/{id}/imagens` | Envia fotos (`multipart/form-data`, campo `fotos`). Aceita JPG, JPEG, PNG, WEBP, AVIF e HEIC/HEIF, até 60 MB cada |
+ | PUT | `/api/admin/produtos/{id}/imagens/ordem` | Define a ordem das fotos |
+-| DELETE | `/api/admin/produtos/{id}/imagens/{imagemId}` | Remove foto |
++| DELETE | `/api/admin/produtos/{id}/imagens/{imagemId}` | Exclui **uma** foto, apaga os arquivos dela do armazenamento e devolve a galeria atualizada. Se era a capa, a próxima assume |
++| POST | `/api/admin/produtos/{id}/imagens/{imagemId}/substituir` | Troca o arquivo de uma foto já cadastrada, mantendo a posição (`multipart/form-data`, campo `foto`) |
++| PATCH | `/api/admin/produtos/{id}/imagens/{imagemId}/principal` | Escolhe qual foto é a capa |
+ | GET | `/api/admin/produtos/exportar` | Planilha Excel do catálogo |
+ | GET | `/api/admin/usuarios/clientes` | Lista clientes |
+ | GET | `/api/admin/pedidos` | Lista com `filtro` (`sem-vendedor`, `meus`, `abertos`), `status`, `busca` (número ou cliente) |
+@@ -119,6 +131,15 @@ Detalhes e respostas de recusa em [SEGURANCA.md](SEGURANCA.md).
+ | 404 | Registro não encontrado |
+ | 422 | Regra de negócio: `{"titulo":"Regra de negócio","detalhe":"Peso e dimensões são obrigatórios para o cálculo do frete."}` |
+ 
++## Categorias no cadastro de produtos
++
++O campo de categoria do produto é montado a partir de `GET /api/admin/categorias/opcoes`, então tudo que for criado ou renomeado em Categorias aparece no cadastro na mesma hora, sem recarregar o painel.
++
++- Só entram categorias e subcategorias **ativas**; as subcategorias vêm logo abaixo da categoria principal.
++- Uma categoria desativada não pode ser escolhida em produto novo nem em troca de categoria (`422`), mas continua valendo para o produto que já estava nela: ao editar, ela aparece marcada como desativada e o vínculo é preservado.
++- A loja (`GET /api/categorias`, filtros e páginas de categoria) mostra apenas as ativas, e o produto aparece tanto na subcategoria quanto na categoria principal.
++- Categoria com produtos ou com subcategorias não pode ser excluída (`422`); o caminho é desativar.
++
+ ## Envio de fotos
+ 
+ `POST /api/admin/produtos/{id}/imagens` recebe os arquivos como vieram do celular. Para cada foto a API:
+@@ -140,6 +161,16 @@ Campos de cada foto na resposta:
+ 
+ Fotos enviadas antes desta melhoria continuam funcionando: `urlMiniatura` e `urlGrande` repetem a `url` original.
+ 
++### Excluir e substituir
++
++Excluir, substituir e escolher a capa são ações **somente da conta administradora** (`403 Acesso não autorizado` para qualquer outro perfil). Em cada uma delas:
++
++- sai apenas a foto indicada — o produto e as outras imagens ficam como estavam;
++- as versões geradas e o arquivo original são apagados do armazenamento (disco local ou S3), sem deixar arquivo abandonado;
++- a galeria é renumerada, então a capa é sempre a primeira foto; excluindo a capa, a próxima assume;
++- quem fez a ação fica registrado em `registros_acesso` (`FotoRemovida`, `FotoSubstituida`) e no log;
++- sem nenhuma foto, `imagemUrl` vem nulo e `fotos` vem vazio: a loja mostra a imagem padrão.
++
+ Uma foto de 54 MB (8000 × 6000) leva cerca de 6 segundos entre envio e processamento e resulta em 82 KB na versão de catálogo.
+ 
+ ## Foto da categoria
+diff --git a/docs/BANCO-DE-DADOS.md b/docs/BANCO-DE-DADOS.md
+index 3a9bc4e..aa84a3d 100644
+--- a/docs/BANCO-DE-DADOS.md
++++ b/docs/BANCO-DE-DADOS.md
+@@ -18,7 +18,7 @@ PostgreSQL 16, nomes em português no padrão `snake_case`. O script completo es
+ | `pedido_itens` | Cópia do produto no momento da compra (nome, variação, personalização, preço, prazo) |
+ | `pagamentos` | Método, situação, id no Mercado Pago, confirmação manual, taxa do provedor, valor líquido, valor estornado e ambiente (teste, produção ou simulado) |
+ | `pedido_historico` | Toda mudança de status, com usuário e comentário |
+-| `configuracoes` | Chave/valor editáveis da loja: dados da loja, frete, estoque, token de instalação (só o hash) e as chaves `pagamento.*` com formas ativas, parcelamento, taxas e o Access Token **cifrado** |
++| `configuracoes` | Chave/valor editáveis da loja: dados da loja, frete, estoque, token de instalação (só o hash), o banner da página inicial (`loja.banner_*`) e as chaves `pagamento.*` com formas ativas, parcelamento, taxas e o Access Token **cifrado** |
+ | `registros_acesso` | Toda tentativa de entrada: data, e-mail, resultado, motivo, origem, IP e navegador |
+ | `usuarios_claims`, `usuarios_logins`, `usuarios_tokens`, `perfis_claims` | Tabelas internas do ASP.NET Identity |
+ 
+diff --git a/docs/CONFIGURACAO.md b/docs/CONFIGURACAO.md
+index 81c0b3a..b561746 100644
+--- a/docs/CONFIGURACAO.md
++++ b/docs/CONFIGURACAO.md
+@@ -17,7 +17,14 @@ As configurações ficam em `backend/src/LojaAmanhecer.Api/appsettings.json`. Em
+ | `Seguranca:MinutosDeBloqueio` | Duração do bloqueio | `15` |
+ | `Jwt:HorasValidadePainel` | Duração da sessão do painel | `8` |
+ | `Seguranca:ChaveCriptografia` | Chave que cifra credenciais guardadas no banco (como o Access Token). Sem ela, é derivada da chave do JWT. **Trocar essa chave torna as credenciais guardadas ilegíveis**, e basta reconectar a conta no painel | vazio |
+-| `Armazenamento:PastaLocal` | Pasta das fotos dos produtos | `uploads` |
++| `Armazenamento:Provedor` | `local` (disco) ou `s3` (serviço compatível com S3) | `local` |
++| `Armazenamento:PastaLocal` | Pasta das fotos, no modo local | `uploads` |
++| `Armazenamento:S3:Bucket` | Bucket das fotos | vazio |
++| `Armazenamento:S3:Endpoint` | Endereço do serviço (Cloudflare R2, MinIO, Backblaze). Vazio usa a Amazon S3 com `Regiao` | vazio |
++| `Armazenamento:S3:Regiao` | Região, quando for Amazon S3 | `auto` |
++| `Armazenamento:S3:ChaveAcesso` / `ChaveSecreta` | Credenciais do bucket | vazio |
++| `Armazenamento:S3:UrlPublica` | Endereço público dos arquivos (CDN ou domínio do bucket) | vazio |
++| `Armazenamento:S3:Prefixo` | Pasta dentro do bucket | `uploads` |
+ | `Cors:Origens` | Endereços que podem chamar a API | `http://localhost:3000` |
+ | `Swagger:Habilitado` | Documentação interativa | `true` em desenvolvimento |
+ | `Urls:Api` / `Urls:Loja` / `Urls:Painel` | Endereços públicos usados no webhook, no retorno do checkout e no link de recuperação de senha | `localhost` |
+@@ -28,6 +35,12 @@ Para gerar uma chave JWT no PowerShell:
+ [Convert]::ToBase64String((1..48 | ForEach-Object { Get-Random -Maximum 256 }))
+ ```
+ 
++## Onde ficam as fotos
++
++Em desenvolvimento, as fotos ficam em disco (`Armazenamento:Provedor = local`) e são servidas em `/uploads`. Em produção, o recomendado é um serviço compatível com S3 — Cloudflare R2, Amazon S3, MinIO ou Backblaze B2 — com `Armazenamento:Provedor = s3`.
++
++Os dois modos fazem exatamente as mesmas operações, inclusive **apagar** os arquivos quando uma foto é excluída ou substituída no painel. Nada mais no sistema precisa mudar: as URLs continuam sendo guardadas do mesmo jeito no banco.
++
+ ## Fotos dos produtos
+ 
+ | Chave | Descrição | Padrão |
+diff --git a/docs/PUBLICACAO.md b/docs/PUBLICACAO.md
+index 1bb8176..849705d 100644
+--- a/docs/PUBLICACAO.md
++++ b/docs/PUBLICACAO.md
+@@ -135,4 +135,5 @@ As migrações do banco são aplicadas automaticamente ao subir a API. Faça um
+ - [ ] Webhook do Mercado Pago apontando para o domínio com HTTPS
+ - [ ] SPF/DKIM do e-mail configurados
+ - [ ] Backup automático testado (gerar e restaurar)
++- [ ] Armazenamento das fotos definido: disco do servidor (com backup do volume) ou bucket S3/R2 configurado e testado
+ - [ ] Pedido real de teste pago e estornado
+diff --git a/docs/SEGURANCA.md b/docs/SEGURANCA.md
+index d279f3c..46340bf 100644
+--- a/docs/SEGURANCA.md
++++ b/docs/SEGURANCA.md
+@@ -104,6 +104,10 @@ Para rodar:
+ dotnet test --filter Isolamento
+ ```
+ 
++## Fotos dos produtos
++
++Enviar, excluir, substituir e reordenar fotos são ações da conta administradora. Toda exclusão e toda substituição ficam registradas em `registros_acesso` com o e-mail de quem fez, a data e o IP, e também no log da API. Os arquivos saem do armazenamento junto com o registro no banco, tanto no disco local quanto no S3.
++
+ ## Credenciais de pagamento
+ 
+ - O Access Token do Mercado Pago **nunca vai para o navegador**. A tela mostra só o prefixo e os quatro últimos caracteres (`APP_USR-••••••••cdef`) e o estado da conexão.
+diff --git a/frontend/publico/marca/LEIA-ME.md b/frontend/publico/marca/LEIA-ME.md
+index da88553..7cabe67 100644
+--- a/frontend/publico/marca/LEIA-ME.md
++++ b/frontend/publico/marca/LEIA-ME.md
+@@ -32,3 +32,29 @@ No HTML:
+ 
+ O protótipo (`/prototipo/index.html`) leva a mesma imagem embutida, para continuar funcionando
+ como arquivo único.
++
++## Banner da página inicial
++
++Arte da **Lojinha do Vale — Artigos Doutrinários O.S.O.E.C.**, extraída do PDF enviado pelo cliente
++em alta resolução (3982 × 486, proporção 8,19 : 1).
++
++| Arquivo | Uso |
++|---|---|
++| `banner-original.png` | 3982 × 486, sem compressão. Fonte para gerar outros tamanhos |
++| `banner-1920.*` | Telas grandes |
++| `banner-1440.*` | Padrão do computador (é o que vai embutido no protótipo) |
++| `banner-1280.*` / `banner-960.*` | Notebooks e tablets |
++| `banner-640.*` | Celular |
++
++Cada tamanho vem em **WebP** (menor) e **JPG** progressivo. A proporção é sempre a mesma, então a
++arte nunca estica: basta `width: 100%; height: auto` com `aspect-ratio: 3982 / 486`.
++
++```html
++<img class="vitrine-arte" src="/marca/banner-1440.webp"
++     srcset="/marca/banner-640.webp 640w, /marca/banner-960.webp 960w, /marca/banner-1440.webp 1440w, /marca/banner-1920.webp 1920w"
++     sizes="(max-width: 760px) 92vw, min(1180px, 92vw)"
++     width="1440" height="176" alt="Lojinha do Vale — Artigos Doutrinários O.S.O.E.C." fetchpriority="high">
++```
++
++O administrador troca essa arte pelo painel, em **Aparência**; quando não há arte enviada, a loja usa
++os arquivos daqui.
+diff --git a/prototipo/index.html b/prototipo/index.html
+index 63a1dd2..e1e4d9e 100644
+--- a/prototipo/index.html
++++ b/prototipo/index.html
+@@ -101,24 +101,24 @@ input:focus,select:focus,textarea:focus{border-color:var(--ametista);outline:non
+   body.loja{padding-bottom:70px}
+ }
+ 
+-/* ===== Aurora (hero) — o elemento marcante ===== */
+-.aurora{position:relative;overflow:hidden;background:linear-gradient(180deg,#BFE6F5 0%,#DCD1F4 48%,#F2DDA8 86%,#F7E7BC 100%)}
+-.aurora .recipiente{position:relative;z-index:2;display:grid;grid-template-columns:1.1fr .9fr;align-items:end;gap:24px;min-height:380px;padding:48px 0 0}
+-.aurora-texto{padding-bottom:56px;max-width:34rem}
+-.aurora h1{color:var(--ametista-escuro)}
+-.aurora p{font-size:1.1rem;color:#4b3f63;max-width:30rem}
+-.aurora-sol{align-self:end;justify-self:center;width:min(420px,100%)}
+-.aurora-sol .raios{transform-origin:50% 100%;animation:nascer 2.4s cubic-bezier(.2,.7,.2,1) both}
+-.aurora-sol .disco{animation:subir 2.4s cubic-bezier(.2,.7,.2,1) both}
+-@keyframes subir{from{transform:translateY(60px);opacity:.3}to{transform:none;opacity:1}}
+-@keyframes nascer{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:none}}
+-.horizonte{position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,transparent,var(--ouro-claro),transparent);z-index:3}
++/* ===== Vitrine da página inicial: a arte da Lojinha do Vale ===== */
++.vitrine{position:relative;background:radial-gradient(120% 140% at 50% 0%,#1B1230 0%,#100B1E 55%,#0A0713 100%);padding:26px 0 40px;overflow:hidden}
++.vitrine .recipiente{position:relative;z-index:2}
++/* a arte entra inteira, na proporção original (nada é cortado nem esticado) */
++.vitrine-arte{width:100%;height:auto;aspect-ratio:3982 / 486;border-radius:12px;display:block;
++  box-shadow:0 10px 34px rgba(0,0,0,.5),0 0 0 1px rgba(226,196,107,.35)}
++.vitrine-texto{max-width:44rem;margin:26px auto 0;text-align:center}
++.vitrine-texto h1{color:#fff;text-shadow:0 2px 18px rgba(0,0,0,.45)}
++.vitrine-texto p{color:#DCD3EE;font-size:1.08rem;margin:0 auto 18px;max-width:34rem}
++/* brilho dourado discreto atrás da arte, só para dar profundidade */
++.vitrine::after{content:"";position:absolute;left:50%;top:-40%;width:min(900px,120%);aspect-ratio:1;transform:translateX(-50%);
++  background:radial-gradient(circle,rgba(226,196,107,.16),transparent 62%);pointer-events:none}
+ @media (max-width:760px){
+-  .aurora .recipiente{grid-template-columns:1fr;min-height:0;padding-top:28px;gap:0}
+-  .aurora-sol{order:-1;width:220px;margin-bottom:-8px}
+-  .aurora-texto{padding-bottom:32px}
++  .vitrine{padding:18px 0 30px}
++  .vitrine-arte{border-radius:8px}
++  .vitrine-texto{margin-top:20px}
++  .vitrine-texto p{font-size:1rem}
+ }
+-
+ /* ===== Seções e categorias (medalhões) ===== */
+ .secao{padding:48px 0}
+ .secao-cabecalho{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:22px}
+@@ -127,6 +127,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--ametista);outline:non
+ .medalhao{text-decoration:none;color:var(--tinta);text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px}
+ .medalhao .circulo{width:100%;max-width:150px;aspect-ratio:1;border-radius:50%;padding:6px;background:conic-gradient(from 200deg,var(--ouro-claro),#fff3c9,var(--ouro),var(--ouro-claro));transition:transform .2s}
+ .medalhao .circulo>div{width:100%;height:100%;border-radius:50%;background:var(--lilas-claro);display:grid;place-items:center;overflow:hidden}
++/* Giro da foto da categoria na página inicial: só a imagem dentro do círculo gira.
++   A borda dourada, o nome e o resto do card ficam parados. */
++@media (hover:hover) and (pointer:fine){
++  .medalhoes .medalhao .circulo>div{transition:transform .9s cubic-bezier(.3,0,.2,1)}
++  /* uma volta a cada entrada do mouse; ao sair, desfaz o giro suavemente */
++  .medalhoes .medalhao:hover .circulo>div,
++  .medalhoes .medalhao:focus-visible .circulo>div{transform:rotate(360deg)}
++}
++@media (prefers-reduced-motion:reduce){
++  .medalhoes .medalhao .circulo>div{transition:none}
++  .medalhoes .medalhao:hover .circulo>div,
++  .medalhoes .medalhao:focus-visible .circulo>div{transform:none}
++}
+ .medalhao .circulo svg{width:92%}
+ .medalhao:hover .circulo{transform:translateY(-3px)}
+ .medalhao strong{font-weight:600;font-size:.98rem;line-height:1.25}
+@@ -311,6 +324,18 @@ tr.clicavel{cursor:pointer} tr.clicavel:hover td{background:var(--lilas-claro)}
+ .fotos-edicao .foto svg{width:100%;height:100%}
+ .fotos-edicao .foto span{position:absolute;bottom:4px;left:4px;background:#fff;font-size:.68rem;padding:1px 6px;border-radius:99px}
+ .fotos-edicao .adicionar{border:2px dashed var(--lilas);display:grid;place-items:center;color:var(--ametista);font-size:.8rem;text-align:center;cursor:pointer;background:#fff}
++.galeria-produto{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:10px}
++.galeria-item{border:1px solid var(--linha);border-radius:12px;overflow:hidden;background:#fff}
++.galeria-item.capa{border-color:var(--ouro);box-shadow:0 0 0 1px var(--ouro)}
++.galeria-item .imagem{aspect-ratio:1;background:var(--lilas-claro);position:relative}
++.galeria-item .imagem img,.galeria-item .imagem svg{width:100%;height:100%;object-fit:cover;display:block}
++.galeria-item .selo-capa{position:absolute;left:8px;top:8px;background:var(--ouro-claro);color:var(--ametista-escuro);font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:99px}
++.galeria-item .acoes{display:flex;gap:4px;padding:8px;flex-wrap:wrap;justify-content:center}
++.galeria-item .acoes button{min-height:32px;padding:0 10px;font-size:.82rem;border-radius:99px;border:1.5px solid var(--linha);background:#fff;cursor:pointer;color:var(--ametista)}
++.galeria-item .acoes button:hover{background:var(--lilas-claro)}
++.galeria-item .acoes button.excluir{color:var(--perigo);border-color:#e7b9c2}
++.galeria-item .acoes button:disabled{opacity:.45;cursor:not-allowed}
++.galeria-vazia{border:2px dashed var(--lilas);border-radius:12px;padding:18px;text-align:center;color:var(--tinta-suave);background:var(--lilas-claro)}
+ .envio-fotos{border:2px dashed var(--lilas);border-radius:var(--raio);padding:16px;text-align:center;background:var(--lilas-claro);margin-bottom:12px}
+ .envio-fotos.arrastando{border-color:var(--ouro);background:var(--ouro-palido)}
+ .envio-fotos p{margin:6px 0 10px;color:var(--tinta-suave);font-size:.9rem}
+@@ -423,6 +448,11 @@ const ic = {
+ 
+ // Marca da loja. No protótipo a imagem vai embutida para o arquivo continuar funcionando sozinho;
+ // no sistema, ela é servida de /marca/marca-192.webp (com png para navegadores antigos).
++// Banner da página inicial. No sistema vem de /api/loja/aparencia (ou da arte que veio na
++// instalação, em /marca/banner-1440.webp); o administrador troca pelo painel, em Aparência.
++const BANNER_PADRAO = "data:image/webp;base64,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";
++let BANNER_URL = BANNER_PADRAO;   // trocada no painel, em Aparência
++
+ const MARCA_URL = "data:image/webp;base64,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";
+ 
+ /// Sempre quadrada e redonda, sem esticar: mesma proporção do arquivo original.
+@@ -480,16 +510,16 @@ const FLUXO = ["PedidoRecebido", "AguardandoPagamento", "PagamentoConfirmado", "
+ const db = {
+   loja: { nome: "Loja Amanhecer", whatsapp: "5561999999999", cepOrigem: "73000-000" },
+   categorias: [
+-    { id: "broches", nome: "Broches de povos", arte: "broche", cor: "#6b4fa8", subs: [
+-      { id: "broches-princesas", nome: "Princesas" }, { id: "broches-pretos-velhos", nome: "Pretos-velhos" }, { id: "broches-demais-povos", nome: "Demais povos" }] },
+-    { id: "radares", nome: "Radares", arte: "radar", cor: "#3d7fa6", subs: [
+-      { id: "radares-doutrinador", nome: "Radar de Doutrinador" }, { id: "radares-apara", nome: "Radar de Apará" }] },
+-    { id: "coletes", nome: "Coletes", arte: "colete", cor: "#4a3380", subs: [
+-      { id: "coletes-doutrinador", nome: "Colete de Doutrinador" }, { id: "coletes-apara", nome: "Colete de Apará" }] },
+-    { id: "fitas", nome: "Fitas", arte: "fita", cor: "#8a6fd1", subs: [
+-      { id: "fitas-doutrinador", nome: "Fita de Doutrinador" }, { id: "fitas-apara", nome: "Fita de Apará" }] },
+-    { id: "quadros", nome: "Fotografias, imagens e quadros", arte: "quadro", cor: "#3E2A6E", subs: [] },
+-    { id: "outros", nome: "Outros artigos", arte: "outros", cor: "#7a62b3", subs: [] }
++    { id: "broches", nome: "Broches de povos", arte: "broche", cor: "#6b4fa8", ativa: true, subs: [
++      { id: "broches-princesas", nome: "Princesas", ativa: true }, { id: "broches-pretos-velhos", nome: "Pretos-velhos", ativa: true }, { id: "broches-demais-povos", nome: "Demais povos", ativa: true }] },
++    { id: "radares", nome: "Radares", arte: "radar", cor: "#3d7fa6", ativa: true, subs: [
++      { id: "radares-doutrinador", nome: "Radar de Doutrinador", ativa: true }, { id: "radares-apara", nome: "Radar de Apará", ativa: true }] },
++    { id: "coletes", nome: "Coletes", arte: "colete", cor: "#4a3380", ativa: true, subs: [
++      { id: "coletes-doutrinador", nome: "Colete de Doutrinador", ativa: true }, { id: "coletes-apara", nome: "Colete de Apará", ativa: true }] },
++    { id: "fitas", nome: "Fitas", arte: "fita", cor: "#8a6fd1", ativa: true, subs: [
++      { id: "fitas-doutrinador", nome: "Fita de Doutrinador", ativa: true }, { id: "fitas-apara", nome: "Fita de Apará", ativa: true }] },
++    { id: "quadros", nome: "Fotografias, imagens e quadros", arte: "quadro", cor: "#3E2A6E", ativa: true, subs: [] },
++    { id: "outros", nome: "Outros artigos", arte: "outros", cor: "#7a62b3", ativa: true, subs: [] }
+   ],
+   produtos: [],
+   clientes: [
+@@ -514,6 +544,7 @@ const db = {
+     maxParcelas: 3, juros: false, minimoParcela: 30,
+     taxas: { Pix: 0.99, "Cartão de crédito": 4.98, Boleto: 3.49 }
+   },
++  aparencia: { bannerPersonalizado: false, nomeArquivo: "" },
+   carrinho: [],
+   sessao: null,           // cliente logado na loja
+   vendedorAtual: 2        // vendedor logado no painel (protótipo)
+@@ -575,6 +606,18 @@ db.produtos = [
+       descricao: "Estojo em veludo para guardar broches." })
+ ];
+ 
++/* Categoria está no ar quando ela e (se for subcategoria) a categoria pai estão ativas.
++   A loja só mostra o que está no ar; o painel mostra tudo. */
++function categoriaAtiva(id) {
++  const { cat, pai } = categoriaPorId(id);
++  if (!cat) return false;
++  return cat.ativa !== false && (!pai || pai.ativa !== false);
++}
++const categoriasDaLoja = () => db.categorias.filter(c => c.ativa !== false);
++const subsDaLoja = c => c.subs.filter(sc => sc.ativa !== false);
++/* Produtos que a loja pode exibir: ativos e em categoria ativa. */
++const produtosDaLoja = () => db.produtos.filter(p => p.ativo && categoriaAtiva(p.categoria));
++
+ function categoriaPorId(id) {
+   for (const c of db.categorias) {
+     if (c.id === id) return { cat: c, pai: null };
+@@ -717,7 +760,7 @@ function layoutLoja(conteudo, rota) {
+     </div>
+     <nav class="menu-categorias" aria-label="Categorias">
+       <div class="recipiente">
+-        ${db.categorias.map(c => `<a href="#/categoria/${c.id}" class="${catAtiva.startsWith(c.id) ? "ativo" : ""}">${esc(c.nome)}</a>`).join("")}
++        ${categoriasDaLoja().map(c => `<a href="#/categoria/${c.id}" class="${catAtiva.startsWith(c.id) ? "ativo" : ""}">${esc(c.nome)}</a>`).join("")}
+       </div>
+     </nav>
+   </header>
+@@ -729,7 +772,7 @@ function layoutLoja(conteudo, rota) {
+         <p>Artigos para os integrantes do Vale do Amanhecer, com produção cuidadosa e envio para todo o Brasil.</p>
+         <a class="btn btn-whats btn-pequeno" style="display:inline-flex" href="https://wa.me/${db.loja.whatsapp}" target="_blank" rel="noopener">${ic.whats} Falar no WhatsApp</a>
+       </div>
+-      <div><h3>Loja</h3>${db.categorias.slice(0, 4).map(c => `<a href="#/categoria/${c.id}">${esc(c.nome)}</a>`).join("")}</div>
++      <div><h3>Loja</h3>${categoriasDaLoja().slice(0, 4).map(c => `<a href="#/categoria/${c.id}">${esc(c.nome)}</a>`).join("")}</div>
+       <div><h3>Ajuda</h3><a href="#/conta/pedidos">Acompanhar pedido</a><a href="#/conta">Minha conta</a></div>
+     </div>
+   </footer>
+@@ -745,13 +788,34 @@ function layoutLoja(conteudo, rota) {
+ // Foto atual de cada card (fica guardada ao voltar para a página)
+ const fotoDoCard = {};
+ 
+-/* Fotos do produto na ordem do cadastro: as já existentes e as enviadas pelo painel.
++/* Imagem padrão da loja, usada quando o produto fica sem nenhuma foto. */
++function imagemPadraoLoja(nome = "") {
++  return `<div style="width:100%;height:100%;display:grid;place-items:center;gap:6px;background:var(--lilas-claro);text-align:center">
++    <img src="${MARCA_URL}" alt="${esc(nome)}" style="width:48%;max-width:120px;opacity:.9;border-radius:50%">
++  </div>`;
++}
++
++/* Cada foto do produto vira um item da galeria. As fotos antigas dos produtos de exemplo
++   entram como ilustração; as enviadas pelo painel, como imagem. */
++function galeriaDoProduto(p) {
++  if (Array.isArray(p.galeria)) return p.galeria;
++  const itens = Array.from({ length: Math.max(0, p.fotos) }, (_, i) => ({ id: `arte-${p.id}-${i}`, tipo: "arte", indice: i, nome: `Foto ${i + 1}` }));
++  (p.arquivos || []).filter(a => a.situacao === "pronto" && a.previa)
++    .forEach(a => itens.push({ id: `arq-${a.id}`, tipo: "previa", previa: a.previa, nome: a.nome }));
++  return itens;
++}
++
++function htmlDaFoto(p, item) {
++  return item.tipo === "previa"
++    ? `<img src="${item.previa}" alt="${esc(p.nome)}" loading="lazy" style="width:100%;height:100%;object-fit:cover">`
++    : arteProduto(p, item.indice ?? 0);
++}
++
++/* Fotos do produto na ordem do cadastro; sem nenhuma, entra a imagem padrão da loja.
+    Na versão final vem da lista "fotos" de GET /api/produtos (versões de miniatura/catálogo). */
+ function fotosDoProduto(p) {
+-  const fotos = Array.from({ length: Math.max(1, p.fotos) }, (_, i) => arteProduto(p, i));
+-  (p.arquivos || []).filter(a => a.situacao === "pronto" && a.previa)
+-    .forEach(a => fotos.push(`<img src="${a.previa}" alt="${esc(p.nome)}" loading="lazy" style="width:100%;height:100%;object-fit:cover">`));
+-  return fotos;
++  const itens = galeriaDoProduto(p);
++  return itens.length ? itens.map(i => htmlDaFoto(p, i)) : [imagemPadraoLoja(p.nome)];
+ }
+ 
+ const setaSvg = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`;
+@@ -819,23 +883,18 @@ function toqueCard(evento, id, fase) {
+ //  PÁGINAS DA LOJA
+ // =====================================================================
+ function paginaInicio() {
+-  const destaques = db.produtos.filter(p => p.ativo && p.destaque);
+-  const maisVendidos = db.produtos.filter(p => p.ativo).sort((a, b) => b.vendidos - a.vendidos).slice(0, 4);
++  const destaques = produtosDaLoja().filter(p => p.destaque);
++  const maisVendidos = produtosDaLoja().sort((a, b) => b.vendidos - a.vendidos).slice(0, 4);
+   return `
+-  <section class="aurora">
++  <section class="vitrine">
+     <div class="recipiente">
+-      <div class="aurora-texto">
++      <img class="vitrine-arte" src="${BANNER_URL}" alt="Lojinha do Vale — Artigos Doutrinários O.S.O.E.C."
++           width="1440" height="176" fetchpriority="high" decoding="async">
++      <div class="vitrine-texto">
+         <h1>Artigos para a sua jornada no Amanhecer</h1>
+         <p>Broches, radares, coletes, fitas e quadros feitos com cuidado. Escolha, personalize e acompanhe cada etapa do seu pedido.</p>
+-        <a class="btn btn-principal" href="#/categorias">Ver categorias</a>
++        <a class="btn btn-ouro" href="#/categorias">Ver categorias</a>
+       </div>
+-      <svg class="aurora-sol" viewBox="0 0 400 210" aria-hidden="true">
+-        <defs><radialGradient id="sol" cx="50%" cy="100%" r="70%"><stop offset="0" stop-color="#FFF3C4"/><stop offset=".55" stop-color="#F2CF6B"/><stop offset="1" stop-color="#D9AC3F"/></radialGradient></defs>
+-        <g class="raios" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".8">
+-          ${Array.from({ length: 9 }, (_, i) => { const a = Math.PI * (i + 1) / 10; return `<line x1="${200 - 150 * Math.cos(a)}" y1="${210 - 150 * Math.sin(a)}" x2="${200 - 190 * Math.cos(a)}" y2="${210 - 190 * Math.sin(a)}"/>`; }).join("")}
+-        </g>
+-        <path class="disco" d="M70 210a130 130 0 0 1 260 0Z" fill="url(#sol)"/>
+-      </svg>
+     </div>
+     <div class="horizonte"></div>
+   </section>
+@@ -843,7 +902,7 @@ function paginaInicio() {
+   <section class="secao recipiente" aria-labelledby="t-cat">
+     <div class="secao-cabecalho"><h2 id="t-cat">Categorias</h2></div>
+     <div class="medalhoes">
+-      ${db.categorias.map(c => `<a class="medalhao" href="#/categoria/${c.id}" aria-label="Ver produtos de ${esc(c.nome)}"><span class="circulo"><div>${medalhaoConteudo(c)}</div></span><strong>${esc(c.nome)}</strong></a>`).join("")}
++      ${categoriasDaLoja().map(c => `<a class="medalhao" href="#/categoria/${c.id}" aria-label="Ver produtos de ${esc(c.nome)}"><span class="circulo"><div>${medalhaoConteudo(c)}</div></span><strong>${esc(c.nome)}</strong></a>`).join("")}
+     </div>
+   </section>
+ 
+@@ -869,10 +928,10 @@ function paginaInicio() {
+ function paginaCategorias() {
+   return `<div class="recipiente" style="padding:24px 0 40px">
+     <h1 style="font-size:2.2rem">Categorias</h1>
+-    ${db.categorias.map(c => `<div class="bloco" style="display:flex;gap:16px;align-items:center">
++    ${categoriasDaLoja().map(c => `<div class="bloco" style="display:flex;gap:16px;align-items:center">
+       <a class="medalhao" href="#/categoria/${c.id}" style="width:76px;flex:none"><span class="circulo"><div>${medalhaoConteudo(c)}</div></span></a>
+       <div style="flex:1"><a href="#/categoria/${c.id}" style="text-decoration:none"><h3 style="margin:0">${esc(c.nome)}</h3></a>
+-      <div class="filtros" style="margin:8px 0 0">${c.subs.map(s => `<a class="chip" href="#/categoria/${s.id}">${s.foto ? `<img class="mini-cat" src="${s.foto}" alt="">` : ""}${esc(s.nome)}</a>`).join("")}</div></div>
++      <div class="filtros" style="margin:8px 0 0">${subsDaLoja(c).map(s => `<a class="chip" href="#/categoria/${s.id}">${s.foto ? `<img class="mini-cat" src="${s.foto}" alt="">` : ""}${esc(s.nome)}</a>`).join("")}</div></div>
+     </div>`).join("")}
+   </div>`;
+ }
+@@ -888,15 +947,15 @@ function ordenar(lista, ordem) {
+ 
+ function paginaCategoria(id, ordem = "relevancia") {
+   const { cat, pai } = categoriaPorId(id);
+-  if (!cat) return `<div class="recipiente vazio"><h2>Categoria não encontrada</h2><a class="btn btn-principal" href="#/">Voltar ao início</a></div>`;
++  if (!cat || !categoriaAtiva(id)) return `<div class="recipiente vazio"><h2>Categoria não encontrada</h2><a class="btn btn-principal" href="#/">Voltar ao início</a></div>`;
+   const raiz = pai || cat;
+   const ids = pai ? [cat.id] : [cat.id, ...cat.subs.map(s => s.id)];
+-  const lista = ordenar(db.produtos.filter(p => p.ativo && ids.includes(p.categoria)), ordem);
++  const lista = ordenar(produtosDaLoja().filter(p => ids.includes(p.categoria)), ordem);
+   return `<div class="recipiente">
+     <p class="trilha"><a href="#/">Início</a> / ${pai ? `<a href="#/categoria/${pai.id}">${esc(pai.nome)}</a> / ` : ""}${esc(cat.nome)}</p>
+     <h1 style="font-size:clamp(1.9rem,5vw,2.6rem)">${esc(pai ? `${cat.nome}` : cat.nome)}</h1>
+     <div class="filtros">
+-      ${raiz.subs.length ? `<a class="chip ${!pai ? "ativo" : ""}" href="#/categoria/${raiz.id}">Todos</a>${raiz.subs.map(s => `<a class="chip ${s.id === id ? "ativo" : ""}" href="#/categoria/${s.id}">${s.foto ? `<img class="mini-cat" src="${s.foto}" alt="">` : ""}${esc(s.nome)}</a>`).join("")}` : ""}
++      ${subsDaLoja(raiz).length ? `<a class="chip ${!pai ? "ativo" : ""}" href="#/categoria/${raiz.id}">Todos</a>${subsDaLoja(raiz).map(s => `<a class="chip ${s.id === id ? "ativo" : ""}" href="#/categoria/${s.id}">${s.foto ? `<img class="mini-cat" src="${s.foto}" alt="">` : ""}${esc(s.nome)}</a>`).join("")}` : ""}
+       <label class="sr" for="ordem">Ordenar</label>
+       <select id="ordem" onchange="location.hash='#/categoria/${id}/'+this.value">
+         ${[["relevancia", "Relevância"], ["vendidos", "Mais vendidos"], ["menor", "Menor preço"], ["maior", "Maior preço"]].map(([v, t]) => `<option value="${v}" ${v === ordem ? "selected" : ""}>${t}</option>`).join("")}
+@@ -911,7 +970,7 @@ const normaliza = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]
+ function paginaBusca(termo) {
+   estado.busca = termo;
+   const t = normaliza(termo.trim());
+-  const lista = db.produtos.filter(p => p.ativo && (!t || normaliza(p.nome + " " + p.descricao + " " + (categoriaPorId(p.categoria).cat?.nome || "") + " " + (categoriaRaiz(p)?.nome || "")).includes(t)));
++  const lista = produtosDaLoja().filter(p => (!t || normaliza(p.nome + " " + p.descricao + " " + (categoriaPorId(p.categoria).cat?.nome || "") + " " + (categoriaRaiz(p)?.nome || "")).includes(t)));
+   return `<div class="recipiente" style="padding-top:20px">
+     <form role="search" onsubmit="event.preventDefault();location.hash='#/busca/'+encodeURIComponent(this.q2.value)" style="display:flex;gap:8px;margin-bottom:16px">
+       <label class="sr" for="q2">Buscar</label>
+@@ -935,7 +994,7 @@ function variacaoSelecionada(p) {
+ }
+ 
+ function paginaProduto(slug) {
+-  const p = db.produtos.find(x => x.slug === slug && x.ativo);
++  const p = db.produtos.find(x => x.slug === slug && x.ativo && categoriaAtiva(x.categoria));
+   if (!p) return `<div class="recipiente vazio"><h2>Produto indisponível</h2><a class="btn btn-principal" href="#/">Voltar ao início</a></div>`;
+   if (sel.produtoId !== p.id) Object.assign(sel, { produtoId: p.id, escolhas: {}, qtd: 1, foto: 0, personalizacao: "", cotacaoProduto: null });
+   const { cat, pai } = categoriaPorId(p.categoria);
+@@ -951,8 +1010,8 @@ function paginaProduto(slug) {
+   <p class="trilha"><a href="#/">Início</a> / ${pai ? `<a href="#/categoria/${pai.id}">${esc(pai.nome)}</a> / ` : ""}<a href="#/categoria/${cat.id}">${esc(cat.nome)}</a></p>
+   <div class="produto-layout">
+     <div>
+-      <div class="galeria-principal">${arteProduto(p, sel.foto)}</div>
+-      <div class="miniaturas">${Array.from({ length: p.fotos }, (_, i) => `<button type="button" aria-label="Foto ${i + 1}" aria-current="${i === sel.foto}" onclick="sel.foto=${i};render()">${arteProduto(p, i)}</button>`).join("")}</div>
++      <div class="galeria-principal">${fotosDoProduto(p)[Math.min(sel.foto, fotosDoProduto(p).length - 1)]}</div>
++      ${fotosDoProduto(p).length > 1 ? `<div class="miniaturas">${fotosDoProduto(p).map((foto, i) => `<button type="button" aria-label="Foto ${i + 1}" aria-current="${i === sel.foto}" onclick="sel.foto=${i};render()">${foto}</button>`).join("")}</div>` : ""}
+     </div>
+     <div>
+       <h1 style="font-size:clamp(1.9rem,4.5vw,2.6rem)">${esc(p.nome)}</h1>
+@@ -1522,7 +1581,8 @@ function layoutAdmin(conteudo, rota) {
+   const links = [
+     ["#/painel", "Painel", ic.painel], ["#/painel/pedidos", "Pedidos", ic.pedidos, novos], ["#/painel/produtos", "Produtos", ic.caixa],
+     ["#/painel/categorias", "Categorias", ic.pasta], ["#/painel/clientes", "Clientes", ic.grupo], ["#/painel/equipe", "Vendedores", ic.escudo],
+-    ["#/painel/relatorios", "Relatórios", ic.grafico], ["#/painel/pagamentos", "Pagamentos", ic.cartao], ["#/painel/acessos", "Acessos", ic.escudo]
++    ["#/painel/relatorios", "Relatórios", ic.grafico], ["#/painel/pagamentos", "Pagamentos", ic.cartao],
++    ["#/painel/aparencia", "Aparência", ic.grade], ["#/painel/acessos", "Acessos", ic.escudo]
+   ];
+   const ativo = h => h === "#/painel" ? rota === "#/painel" : rota.startsWith(h);
+   return `<div class="admin-layout">
+@@ -1887,7 +1947,7 @@ function adminProdutos() {
+     <div class="tabela-rolagem"><table>
+       <thead><tr><th></th><th>Produto</th><th>Categoria</th><th>Preço</th><th>Estoque</th><th>Disponibilidade</th><th>Ativo</th></tr></thead>
+       <tbody>${lista.map(p => { const { cat, pai } = categoriaPorId(p.categoria); const est = estoqueTotal(p);
+-        return `<tr><td><div class="mini-foto">${arteProduto(p)}</div></td>
++        return `<tr><td><div class="mini-foto">${fotosDoProduto(p)[0]}</div></td>
+         <td><a href="#/painel/produtos/${p.id}"><strong>${esc(p.nome)}</strong></a>${p.variacoes.length ? `<br><small>${p.variacoes.length} variações</small>` : ""}</td>
+         <td>${pai ? esc(pai.nome) + " › " : ""}${esc(cat.nome)}</td><td>${brl(p.preco)}</td>
+         <td style="color:${p.disponibilidade === "ProntaEntrega" && est <= 3 ? "var(--alerta)" : "inherit"};font-weight:600">${est}</td>
+@@ -1897,16 +1957,48 @@ function adminProdutos() {
+   </div>`;
+ }
+ 
++/* Opções do campo de categoria: só as que estão no ar, agrupadas por categoria principal.
++   A categoria já vinculada ao produto entra mesmo desativada, para não perder o vínculo. */
++function opcoesDeCategoria(selecionada) {
++  const partes = [];
++  db.categorias.forEach(c => {
++    const subsVisiveis = c.subs.filter(sc => sc.ativa !== false || sc.id === selecionada);
++    const paiVisivel = c.ativa !== false || c.id === selecionada || subsVisiveis.some(sc => sc.id === selecionada);
++    if (!paiVisivel) return;
++
++    const rotulo = nome => `${esc(nome)}`;
++    const marca = cat => cat.ativa === false ? " (desativada)" : "";
++    const grupo = [];
++    if (c.ativa !== false || c.id === selecionada)
++      grupo.push(`<option value="${c.id}" ${selecionada === c.id ? "selected" : ""}>${rotulo(c.nome)}${marca(c)}</option>`);
++    subsVisiveis.forEach(sc => {
++      // a subcategoria de uma categoria desativada também fica fora do ar
++      const foraDoAr = sc.ativa === false || c.ativa === false;
++      grupo.push(`<option value="${sc.id}" ${selecionada === sc.id ? "selected" : ""}>${rotulo(sc.nome)}${foraDoAr ? " (desativada)" : ""}</option>`);
++    });
++    partes.push(`<optgroup label="${esc(c.nome)}${marca(c)}">${grupo.join("")}</optgroup>`);
++  });
++  return partes.join("") || `<option value="">Nenhuma categoria ativa — crie uma em Categorias</option>`;
++}
++
+ let rascunho = null;
+ function adminProdutoForm(id) {
+   if (!rascunho || rascunho._origem !== id) {
+-    const base = id === "novo" ? P({ nome: "Novo produto", categoria: "outros", preco: 0, cor: "#6b4fa8", fotos: 0 }) : db.produtos.find(p => p.id === +id);
++    const primeiraAtiva = db.categorias.find(c => c.ativa !== false);
++    const base = id === "novo"
++      ? P({ nome: "Novo produto", categoria: primeiraAtiva ? primeiraAtiva.id : "outros", preco: 0, cor: "#6b4fa8", fotos: 0 })
++      : db.produtos.find(p => p.id === +id);
++    if (!base) return `<p><a href="#/painel/produtos">Voltar aos produtos</a></p><div class="cartao vazio">Produto não encontrado.</div>`;
+     if (id === "novo") seqProduto--;
+     rascunho = JSON.parse(JSON.stringify(base)); rascunho._origem = id;
+     if (id === "novo") { rascunho.nome = ""; rascunho.id = null; }
+   }
+   const r = rascunho;
+-  const opcoesCat = db.categorias.map(c => `<option value="${c.id}" ${r.categoria === c.id ? "selected" : ""}>${esc(c.nome)}</option>${c.subs.map(s => `<option value="${s.id}" ${r.categoria === s.id ? "selected" : ""}>   ${esc(c.nome)} › ${esc(s.nome)}</option>`).join("")}`).join("");
++  // A lista sai das categorias cadastradas, então tudo que for criado ou renomeado
++  // no painel já aparece aqui na hora. Na API: GET /api/admin/categorias/opcoes.
++  const opcoesCat = opcoesDeCategoria(r.categoria);
++  const categoriaEscolhida = categoriaPorId(r.categoria);
++  const categoriaForaDoAr = r.categoria && !categoriaAtiva(r.categoria);
+   const encomenda = r.disponibilidade === "SobEncomenda";
+   return `<p><a href="#/painel/produtos" onclick="rascunho=null">Voltar aos produtos</a></p>
+   <div class="admin-topo"><h1>${id === "novo" ? "Cadastrar produto" : "Editar produto"}</h1>
+@@ -1915,7 +2007,12 @@ function adminProdutoForm(id) {
+     <div>
+       <section class="cartao" style="margin-bottom:18px"><h2 style="font-size:1.4rem">Informações</h2>
+         <div class="campo"><label for="fNome">Nome</label><input id="fNome" type="text" value="${esc(r.nome)}" oninput="rascunho.nome=this.value"></div>
+-        <div class="campo"><label for="fCat">Categoria e subcategoria</label><select id="fCat" onchange="rascunho.categoria=this.value">${opcoesCat}</select></div>
++        <div class="campo"><label for="fCat">Categoria e subcategoria</label>
++          <select id="fCat" onchange="rascunho.categoria=this.value;render()">${opcoesCat}</select>
++          ${categoriaForaDoAr ? `<div class="erro">Esta categoria está desativada. O produto continua vinculado a ela, mas só volta à loja quando a categoria for reativada ou outra for escolhida.</div>`
++            : categoriaEscolhida.pai ? `<small style="color:var(--tinta-suave)">Fica em <strong>${esc(categoriaEscolhida.pai.nome)}</strong> › ${esc(categoriaEscolhida.cat.nome)}. Aparece nas duas páginas na loja.</small>`
++            : ""}
++          <small style="display:block;color:var(--tinta-suave);margin-top:4px">Falta alguma? <a href="#/painel/categorias">Crie em Categorias</a> — ela aparece aqui na hora.</small></div>
+         <div class="campo"><label for="fDesc">Descrição</label><textarea id="fDesc" oninput="rascunho.descricao=this.value">${esc(r.descricao)}</textarea></div>
+         <div class="campo"><label>Fotos <small>(a primeira é a principal · JPG, PNG, WEBP, AVIF e HEIC do iPhone, até 60 MB cada)</small></label>
+           <div class="envio-fotos" id="areaEnvio" ondragover="event.preventDefault();this.classList.add('arrastando')" ondragleave="this.classList.remove('arrastando')" ondrop="soltarFotos(event)">
+@@ -1929,9 +2026,17 @@ function adminProdutoForm(id) {
+             <input id="cameraFotos" type="file" class="oculto" accept="image/*" capture="environment" onchange="enviarFotos(this.files);this.value=''">
+             <div class="fila-envio" id="filaEnvio">${(r.arquivos || []).map(itemEnvioHtml).join("")}</div>
+           </div>
+-          <div class="fotos-edicao">${Array.from({ length: r.fotos }, (_, i) => `<div class="foto">${arteProduto(r, i)}${i === 0 ? "<span>Principal</span>" : ""}</div>`).join("")}
+-            ${(r.arquivos || []).filter(a => a.situacao === "pronto").map((a, i) => `<div class="foto">${a.previa ? `<img src="${a.previa}" alt="${esc(a.nome)}" style="width:100%;height:100%;object-fit:cover">` : arteProduto(r, i)}<span>${r.fotos === 0 && i === 0 ? "Principal" : "Enviada"}</span></div>`).join("")}
+-          </div>
++          ${galeriaDoRascunho().length ? `<div class="galeria-produto">${galeriaDoRascunho().map((item, i) => `
++            <div class="galeria-item ${i === 0 ? "capa" : ""}">
++              <div class="imagem">${htmlDaFoto(r, item)}${i === 0 ? '<span class="selo-capa">Capa</span>' : ""}</div>
++              <div class="acoes">
++                <button type="button" onclick="definirCapa('${item.id}')" ${i === 0 ? "disabled" : ""} title="Usar como capa">Capa</button>
++                <button type="button" onclick="trocarFotoProduto('${item.id}')" title="Substituir esta foto">Trocar</button>
++                <button type="button" class="excluir" onclick="excluirFotoProduto('${item.id}')" title="Excluir esta foto">Excluir</button>
++              </div>
++            </div>`).join("")}</div>`
++            : `<div class="galeria-vazia">Nenhuma foto cadastrada. Enquanto não houver foto, a loja mostra a imagem padrão.</div>`}
++          <input id="trocarFotoArquivo" type="file" class="oculto" accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.avif,.heic,.heif" onchange="aplicarTrocaDeFoto(this.files[0]);this.value=''">
+           <small style="color:var(--tinta-suave)">As fotos ficam em WebP para a loja carregar rápido no celular; o arquivo original é guardado como recebido.</small>
+         </div>
+       </section>
+@@ -2061,6 +2166,8 @@ function simularEnvio(item) {
+         item.situacao = "pronto";
+         item.detalhe = `Original de ${tamanhoMB(item.bytes)} guardado · 3 versões WebP criadas`;
+         atualizarItemEnvio(item);
++        // entra no fim da galeria do produto que está aberto
++        if (rascunho) galeriaDoRascunho().push({ id: `arq-${item.id}`, tipo: "previa", previa: item.previa, nome: item.nome });
+         toast(`${item.nome} pronta para a loja.`);
+         render();
+       }, 900);
+@@ -2069,6 +2176,64 @@ function simularEnvio(item) {
+   setTimeout(passo, 150);
+ }
+ 
++// ---------- Galeria do produto no painel: excluir, trocar e escolher a capa ----------
++let fotoEmTroca = null;
++
++/** A galeria fica no rascunho enquanto o formulário está aberto; ao salvar, vai para o produto. */
++function galeriaDoRascunho() {
++  if (!rascunho) return [];
++  if (!Array.isArray(rascunho.galeria)) rascunho.galeria = galeriaDoProduto(rascunho);
++  return rascunho.galeria;
++}
++
++function excluirFotoProduto(id) {
++  const galeria = galeriaDoRascunho();
++  const i = galeria.findIndex(f => f.id === id);
++  if (i < 0) return;
++  const eraCapa = i === 0;
++  if (!confirm(`Excluir esta foto do produto?${eraCapa ? "\n\nEla é a capa: a próxima foto passa a ser a capa." : ""}\n\nO arquivo também sai do armazenamento. As outras fotos e o produto não são afetados.`)) return;
++
++  galeria.splice(i, 1);   // sai só esta foto
++  toast(galeria.length
++    ? `Foto excluída.${eraCapa ? " A próxima virou a capa." : ""} Salve o produto para valer na loja.`
++    : "Foto excluída. Sem fotos, a loja mostra a imagem padrão.");
++  render();
++}
++
++function definirCapa(id) {
++  const galeria = galeriaDoRascunho();
++  const i = galeria.findIndex(f => f.id === id);
++  if (i <= 0) return;
++  galeria.unshift(galeria.splice(i, 1)[0]);
++  toast("Foto definida como capa.");
++  render();
++}
++
++function trocarFotoProduto(id) {
++  fotoEmTroca = id;
++  document.getElementById("trocarFotoArquivo").click();
++}
++
++function aplicarTrocaDeFoto(arquivo) {
++  if (!arquivo || !fotoEmTroca) return;
++  const ext = (arquivo.name.split(".").pop() || "").toLowerCase();
++  if (!FOTOS_ACEITAS.includes(ext) && !arquivo.type.startsWith("image/")) return toast("Formato não aceito. Use JPG, PNG, WEBP, AVIF ou HEIC.");
++  if (arquivo.size > LIMITE_FOTO_MB * 1048576) return toast(`A foto tem ${tamanhoMB(arquivo.size)} e passa do limite de ${LIMITE_FOTO_MB} MB.`);
++
++  const alvo = fotoEmTroca;
++  const leitor = new FileReader();
++  leitor.onload = () => {
++    const galeria = galeriaDoRascunho();
++    const i = galeria.findIndex(f => f.id === alvo);
++    if (i >= 0) galeria[i] = { id: `arq-${Date.now()}`, tipo: "previa", previa: leitor.result, nome: arquivo.name };
++    fotoEmTroca = null;
++    toast("Foto substituída, na mesma posição. O arquivo antigo sai do armazenamento ao salvar.");
++    render();
++  };
++  leitor.onerror = () => { fotoEmTroca = null; toast("Não foi possível ler este arquivo."); };
++  leitor.readAsDataURL(arquivo);
++}
++
+ function gerarVariacoes() {
+   const r = rascunho; const antigas = r.variacoes;
+   const combos = r.opcoes.filter(o => o.valores.length).reduce((acc, o) => acc.flatMap(a => o.valores.map(v => ({ ...a, [o.nome]: v }))), [{}]);
+@@ -2083,11 +2248,64 @@ function salvarProduto() {
+   if (!(r.peso > 0) || r.dim.some(d => !(d > 0))) erros.push("peso e dimensões");
+   if (r.disponibilidade === "SobEncomenda" && !(r.prazoProducao > 0)) erros.push("prazo de produção");
+   if (erros.length) return toast("Preencha: " + erros.join(", ") + ".");
+-  if (r._origem === "novo") { const novo = P({ ...r, id: undefined }); delete novo._origem; db.produtos.unshift(novo); }
++  r.galeria = galeriaDoRascunho();
++  r.fotos = r.galeria.filter(f => f.tipo === "arte").length;
++  if (r._origem === "novo") {
++    // deixa P() gerar o id e o slug do produto novo
++    const dados = { ...r }; delete dados.id; delete dados._origem; delete dados.slug;
++    db.produtos.unshift(P(dados));
++  }
+   else { const alvo = db.produtos.find(p => p.id === +r._origem); Object.assign(alvo, JSON.parse(JSON.stringify(r))); delete alvo._origem; }
+   rascunho = null; toast("Produto salvo."); location.hash = "#/painel/produtos";
+ }
+ 
++
++// ---------- Aparência da loja: troca do banner da página inicial ----------
++function painelAparencia() {
++  const a = db.aparencia;
++  return `<div class="admin-topo"><h1>Aparência da loja</h1></div>
++  <div class="cartao">
++    <h2 style="font-size:1.4rem">Banner da página inicial</h2>
++    <p style="color:var(--tinta-suave);margin-top:-4px">É a arte que abre a loja. A imagem entra inteira, na proporção em que foi enviada: nada é cortado nem esticado. O ideal é uma arte bem larga (perto de 8 por 1, como a atual), em JPG, PNG, WEBP, AVIF ou HEIC.</p>
++    <div style="background:#100B1E;border-radius:12px;padding:14px;margin:14px 0">
++      <img src="${BANNER_URL}" alt="Banner atual da loja" style="width:100%;height:auto;border-radius:8px;display:block">
++    </div>
++    <p style="font-size:.9rem;color:var(--tinta-suave)">${a.bannerPersonalizado ? `Arte enviada por você${a.nomeArquivo ? `: <strong>${esc(a.nomeArquivo)}</strong>` : ""}.` : "Usando a arte que veio na instalação da loja."}</p>
++    <div style="display:flex;gap:8px;flex-wrap:wrap">
++      <button class="btn btn-principal btn-pequeno" type="button" onclick="document.getElementById('arquivoBanner').click()">${a.bannerPersonalizado ? "Trocar a arte" : "Enviar nova arte"}</button>
++      ${a.bannerPersonalizado ? `<button class="btn btn-perigo btn-pequeno" type="button" onclick="removerBanner()">Voltar à arte padrão</button>` : ""}
++      <a class="btn btn-contorno btn-pequeno" href="#/">Ver a loja</a>
++    </div>
++    <input id="arquivoBanner" type="file" class="oculto" accept="image/jpeg,image/png,image/webp,image/avif,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.avif,.heic,.heif" onchange="enviarBanner(this.files[0]);this.value=''">
++    <div class="aviso" style="margin-top:14px">No sistema, a arte vai para <code>/api/admin/aparencia/banner</code>: o servidor corrige a orientação, gera as versões otimizadas para computador e celular e guarda o arquivo original. Só a conta administradora pode trocar.</div>
++  </div>`;
++}
++
++function enviarBanner(arquivo) {
++  if (!arquivo) return;
++  const ext = (arquivo.name.split(".").pop() || "").toLowerCase();
++  if (!FOTOS_ACEITAS.includes(ext) && !arquivo.type.startsWith("image/")) return toast("Formato não aceito. Use JPG, PNG, WEBP, AVIF ou HEIC.");
++  if (arquivo.size > LIMITE_FOTO_MB * 1048576) return toast(`A imagem tem ${tamanhoMB(arquivo.size)} e passa do limite de ${LIMITE_FOTO_MB} MB.`);
++
++  const leitor = new FileReader();
++  leitor.onload = () => {
++    BANNER_URL = leitor.result;
++    db.aparencia = { bannerPersonalizado: true, nomeArquivo: arquivo.name };
++    toast("Banner trocado. A página inicial já está com a arte nova.");
++    render();
++  };
++  leitor.onerror = () => toast("Não foi possível ler este arquivo.");
++  leitor.readAsDataURL(arquivo);
++}
++
++function removerBanner() {
++  if (!confirm("Voltar ao banner que veio na instalação da loja?")) return;
++  BANNER_URL = BANNER_PADRAO;
++  db.aparencia = { bannerPersonalizado: false, nomeArquivo: "" };
++  toast("Banner padrão restaurado.");
++  render();
++}
++
+ // ----- Categorias -----
+ function adminCategorias() {
+   return `<div class="admin-topo"><h1>Categorias</h1></div>
+@@ -2096,30 +2314,36 @@ function adminCategorias() {
+       ${db.categorias.map((c, ci) => `<li><div class="linha-cat">
+         <span style="display:flex;align-items:center;gap:10px;min-width:0">
+           <span class="foto-cat"><div>${medalhaoConteudo(c)}</div></span>
+-          <span style="min-width:0"><strong>${esc(c.nome)}</strong>
+-            <small style="display:block;color:var(--tinta-suave)">${db.produtos.filter(p => p.categoria === c.id || c.subs.some(s => s.id === p.categoria)).length} produtos · ${c.foto ? "foto própria" : "ilustração padrão"}</small></span>
++          <span style="min-width:0"><strong>${esc(c.nome)}</strong>${c.ativa === false ? ' <span class="status st-Cancelado">Desativada</span>' : ""}
++            <small style="display:block;color:var(--tinta-suave)">${produtosDaCategoria(c.id)} produtos · ${c.subs.length} subcategoria(s) · ${c.foto ? "foto própria" : "ilustração padrão"}</small></span>
+         </span>
+         <span class="acoes-foto">
++          <button class="interruptor" type="button" role="switch" aria-checked="${c.ativa !== false}" aria-label="Categoria ativa" onclick="alternarCategoria(${ci})"></button>
+           <button class="btn btn-contorno btn-pequeno" type="button" onclick="escolherFotoCategoria('${c.id}')">${c.foto ? "Trocar foto" : "Adicionar foto"}</button>
+           ${c.foto ? `<button class="btn btn-perigo btn-pequeno" type="button" onclick="removerFotoCategoria('${c.id}')">Remover foto</button>` : ""}
+-          <button class="btn btn-contorno btn-pequeno" type="button" onclick="renomearCategoria(${ci})">Renomear</button></span></div>
++          <button class="btn btn-contorno btn-pequeno" type="button" onclick="renomearCategoria(${ci})">Renomear</button>
++          <button class="btn btn-perigo btn-pequeno" type="button" onclick="excluirCategoria(${ci})">Excluir</button></span></div>
+         ${c.subs.length ? `<ul>${c.subs.map((s, si) => `<li><div class="linha-cat">
+           <span style="display:flex;align-items:center;gap:10px;min-width:0">
+             <span class="foto-cat" style="width:40px;height:40px"><div>${medalhaoConteudo(s)}</div></span>
+-            <span>${esc(s.nome)}</span></span>
++            <span>${esc(s.nome)}${s.ativa === false ? ' <span class="status st-Cancelado">Desativada</span>' : ""}
++              <small style="display:block;color:var(--tinta-suave)">${produtosDaCategoria(s.id)} produtos</small></span></span>
+           <span class="acoes-foto">
++            <button class="interruptor" type="button" role="switch" aria-checked="${s.ativa !== false}" aria-label="Subcategoria ativa" onclick="alternarCategoria(${ci},${si})"></button>
+             <button class="btn btn-contorno btn-pequeno" type="button" onclick="escolherFotoCategoria('${s.id}')">${s.foto ? "Trocar foto" : "Adicionar foto"}</button>
+             ${s.foto ? `<button class="btn btn-perigo btn-pequeno" type="button" onclick="removerFotoCategoria('${s.id}')">Remover foto</button>` : ""}
+-            <button class="btn btn-contorno btn-pequeno" type="button" onclick="renomearCategoria(${ci},${si})">Renomear</button></span></div></li>`).join("")}</ul>` : ""}
++            <button class="btn btn-contorno btn-pequeno" type="button" onclick="renomearCategoria(${ci},${si})">Renomear</button>
++            <button class="btn btn-perigo btn-pequeno" type="button" onclick="excluirCategoria(${ci},${si})">Excluir</button></span></div></li>`).join("")}</ul>` : ""}
+       </li>`).join("")}
+     </ul></section>
+     <section class="cartao"><h2 style="font-size:1.4rem">Nova categoria</h2>
+       <form onsubmit="event.preventDefault();criarCategoria(this)">
+         <div class="campo"><label for="nc">Nome</label><input id="nc" name="nome" type="text" required></div>
+-        <div class="campo"><label for="np">Dentro de</label><select id="np" name="pai"><option value="">Nenhuma (categoria principal)</option>${db.categorias.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join("")}</select></div>
++        <div class="campo"><label for="np">Dentro de</label><select id="np" name="pai"><option value="">Nenhuma (categoria principal)</option>${db.categorias.filter(c => c.ativa !== false).map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join("")}</select></div>
+         <button class="btn btn-principal">Criar categoria</button>
+       </form>
+       <div class="aviso" style="margin-top:14px">A loja aceita dois níveis: categoria e subcategoria. Categorias com produtos podem ser desativadas, mas não excluídas.</div>
++      <div class="aviso">O que você criar ou renomear aqui aparece na hora no cadastro de produtos, no menu da loja e nos filtros. Categoria desativada some da loja e do cadastro de produtos novos, mas os produtos já vinculados continuam nela.</div>
+       <div class="aviso aviso-ouro">Cada categoria e subcategoria pode ter a própria foto no medalhão da loja. Sem foto, fica a ilustração padrão. Pode enviar a foto direto do celular: o enquadramento é escolhido na hora e a imagem é otimizada automaticamente.</div>
+     </section>
+   </div>`;
+@@ -2248,12 +2472,45 @@ function salvarFotoCategoria() {
+   render();
+ }
+ 
++/** Quantos produtos estão nesta categoria (contando as subcategorias, quando for uma principal). */
++function produtosDaCategoria(id) {
++  const { cat, pai } = categoriaPorId(id);
++  if (!cat) return 0;
++  const ids = pai ? [cat.id] : [cat.id, ...cat.subs.map(s => s.id)];
++  return db.produtos.filter(p => ids.includes(p.categoria)).length;
++}
++
++function alternarCategoria(ci, si) {
++  const alvo = si == null ? db.categorias[ci] : db.categorias[ci].subs[si];
++  const vaiDesativar = alvo.ativa !== false;
++  const quantos = produtosDaCategoria(alvo.id);
++  if (vaiDesativar && quantos && !confirm(`Desativar "${alvo.nome}"?\n\n${quantos} produto(s) continuam vinculados a ela e mantêm a categoria, mas saem da loja até ela ser reativada.`)) return;
++  alvo.ativa = !vaiDesativar;
++  toast(vaiDesativar ? `"${alvo.nome}" desativada: sai da loja e do cadastro de produtos novos.` : `"${alvo.nome}" reativada.`);
++  render();
++}
++
++/* Mesma regra da API: categoria com produtos ou com subcategorias não é excluída. */
++function excluirCategoria(ci, si) {
++  const c = db.categorias[ci];
++  const alvo = si == null ? c : c.subs[si];
++  const quantos = produtosDaCategoria(alvo.id);
++  if (quantos) return toast(`"${alvo.nome}" tem ${quantos} produto(s). Mova-os para outra categoria ou apenas desative esta.`);
++  if (si == null && c.subs.length) return toast(`"${alvo.nome}" tem subcategorias. Remova ou mova as subcategorias antes de excluir.`);
++  if (!confirm(`Excluir a categoria "${alvo.nome}"? Ela sai da loja e do cadastro de produtos.`)) return;
++  if (si == null) db.categorias.splice(ci, 1); else c.subs.splice(si, 1);
++  toast("Categoria excluída.");
++  render();
++}
++
+ function criarCategoria(f) {
+   const nome = f.nome.value.trim(); if (!nome) return;
+   const id = normaliza(nome).replace(/[^a-z0-9]+/g, "-") + "-" + Date.now().toString(36);
+-  if (f.pai.value) db.categorias.find(c => c.id === f.pai.value).subs.push({ id, nome });
+-  else db.categorias.push({ id, nome, arte: "outros", cor: "#6b4fa8", subs: [] });
+-  toast("Categoria criada."); render();
++  if (f.pai.value) db.categorias.find(c => c.id === f.pai.value).subs.push({ id, nome, ativa: true });
++  else db.categorias.push({ id, nome, arte: "outros", cor: "#6b4fa8", ativa: true, subs: [] });
++  f.reset();
++  toast("Categoria criada. Já aparece no cadastro de produtos e na loja.");
++  render();
+ }
+ function renomearCategoria(ci, si) {
+   const alvo = si == null ? db.categorias[ci] : db.categorias[ci].subs[si];
+@@ -2378,7 +2635,7 @@ function render() {
+       : secao === "categorias" ? adminCategorias() : secao === "clientes" ? adminClientes()
+       : secao === "equipe" ? adminEquipe() : secao === "relatorios" ? adminRelatorios()
+       : secao === "acessos" ? painelAcessos() : secao === "senha" ? telaTrocarSenha()
+-      : secao === "pagamentos" ? painelPagamentos() : adminPainel();
++      : secao === "pagamentos" ? painelPagamentos() : secao === "aparencia" ? painelAparencia() : adminPainel();
+     $("#app").innerHTML = layoutAdmin(pag, rota);
+   } else {
+     document.body.className = "loja";
